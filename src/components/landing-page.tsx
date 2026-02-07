@@ -16,7 +16,8 @@ import {
   MessageCircle,
   Smartphone,
   CheckCircle,
-  LocateFixed
+  LocateFixed,
+  Menu
 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useLanguage } from '../App';
@@ -36,6 +37,7 @@ export function LandingPage({ onNavigate, onLoginClick, onRegisterClick, isAuthe
   const { language, setLanguage, t } = useLanguage();
   const [showLanguageMenu, setShowLanguageMenu] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState({
     priceRange: 'all',
@@ -201,12 +203,33 @@ export function LandingPage({ onNavigate, onLoginClick, onRegisterClick, isAuthe
         toast.success("Location updated! Showing nearest shops.");
       },
       (error) => {
-        console.error("Error getting location:", error.code, error.message);
+        // Handle permissions policy restriction (common in IFrames/Previews) gracefully
+        const isPolicyBlocked = error.code === 1 && error.message.toLowerCase().includes("permissions policy");
+
+        if (isPolicyBlocked) {
+            // Quietly fallback to demo location without console errors
+            setIsLocating(false);
+            toast.info("Preview Mode: Using demo location (Bangalore)");
+            const demoLat = 12.9716;
+            const demoLng = 77.5946;
+            setUserLocation({ lat: demoLat, lng: demoLng });
+            
+            const updatedShops = initialBarberShops.map(shop => ({
+              ...shop,
+              distance: calculateDistance(demoLat, demoLng, shop.lat, shop.lng)
+            })).sort((a, b) => a.distance - b.distance);
+            
+            setBarberShops(updatedShops);
+            return; 
+        }
+
+        // Only log actual errors for other cases
+        console.warn("Location access failed:", error.message);
         setIsLocating(false);
-        
+
         let errorMessage = "Unable to retrieve your location.";
         if (error.code === 1) { // PERMISSION_DENIED
-          errorMessage = "Location permission denied. Please enable it in your browser settings.";
+             errorMessage = "Location permission denied. Please enable it in your browser settings.";
         } else if (error.code === 2) { // POSITION_UNAVAILABLE
           errorMessage = "Location information is unavailable.";
         } else if (error.code === 3) { // TIMEOUT
@@ -258,7 +281,7 @@ export function LandingPage({ onNavigate, onLoginClick, onRegisterClick, isAuthe
   return (
     <div className="min-h-screen">
       {/* Navigation */}
-      <nav className="sticky top-0 z-50 backdrop-blur-xl bg-white/70 border-b border-violet-100/50 shadow-sm">
+      <nav className="sticky top-0 z-50 backdrop-blur-md bg-white/80 border-b border-violet-100/50 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             {/* Logo */}
@@ -387,8 +410,93 @@ export function LandingPage({ onNavigate, onLoginClick, onRegisterClick, isAuthe
                 </>
               )}
             </div>
+            
+            {/* Mobile Menu Button */}
+            <div className="flex md:hidden items-center gap-4">
+               {/* Language toggle for mobile (compact) */}
+               <button 
+                  onClick={() => {
+                     const nextLangIndex = (languages.findIndex(l => l.code === language) + 1) % languages.length;
+                     setLanguage(languages[nextLangIndex].code);
+                  }}
+                  className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-lg"
+               >
+                  {currentLanguage.flag}
+               </button>
+
+               <button
+                  onClick={() => setShowMobileMenu(!showMobileMenu)}
+                  className="p-2 text-slate-700 hover:bg-slate-100 rounded-lg transition"
+               >
+                  {showMobileMenu ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+               </button>
+            </div>
           </div>
         </div>
+
+        {/* Mobile Menu Overlay */}
+        {showMobileMenu && (
+          <motion.div 
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="md:hidden border-t border-violet-100 bg-white/95 backdrop-blur-xl overflow-hidden"
+          >
+            <div className="p-4 space-y-4">
+              <button 
+                onClick={() => { scrollToSection(homeRef); setShowMobileMenu(false); }}
+                className="block w-full text-left px-4 py-3 text-slate-700 hover:bg-violet-50 hover:text-violet-600 rounded-xl transition font-medium"
+              >
+                {t('home')}
+              </button>
+              <button 
+                onClick={() => { scrollToSection(exploreRef); setShowMobileMenu(false); }}
+                className="block w-full text-left px-4 py-3 text-slate-700 hover:bg-violet-50 hover:text-violet-600 rounded-xl transition font-medium"
+              >
+                {t('explore')}
+              </button>
+              <button 
+                onClick={() => { scrollToSection(howItWorksRef); setShowMobileMenu(false); }}
+                className="block w-full text-left px-4 py-3 text-slate-700 hover:bg-violet-50 hover:text-violet-600 rounded-xl transition font-medium"
+              >
+                {t('howItWorks')}
+              </button>
+
+              <div className="border-t border-slate-100 my-2 pt-2">
+                {isAuthenticated ? (
+                  <>
+                    <div className="px-4 py-2 flex items-center gap-2 text-slate-500 text-sm">
+                      <User className="w-4 h-4" />
+                      {user?.name}
+                    </div>
+                    <button
+                      onClick={() => { onLogout(); setShowMobileMenu(false); }}
+                      className="w-full text-left px-4 py-3 text-rose-600 hover:bg-rose-50 rounded-xl transition font-medium flex items-center gap-2"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      Logout
+                    </button>
+                  </>
+                ) : (
+                  <div className="flex flex-col gap-3 p-2">
+                    <button 
+                      onClick={() => { onLoginClick(); setShowMobileMenu(false); }}
+                      className="w-full py-3 text-violet-600 bg-violet-50 rounded-xl font-medium"
+                    >
+                      {t('login')}
+                    </button>
+                    <button 
+                      onClick={() => { onRegisterClick(); setShowMobileMenu(false); }}
+                      className="w-full py-3 bg-gradient-to-r from-violet-600 to-blue-600 text-white rounded-xl font-medium shadow-lg shadow-violet-200"
+                    >
+                      {t('register')}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
       </nav>
 
       {/* Hero Section - HOME */}
@@ -429,7 +537,7 @@ export function LandingPage({ onNavigate, onLoginClick, onRegisterClick, isAuthe
           transition={{ duration: 0.6, delay: 0.6 }}
         >
           <div className="relative group">
-            <div className="absolute inset-0 bg-gradient-to-r from-violet-400 to-blue-400 rounded-2xl blur opacity-20 group-hover:opacity-30 transition"></div>
+            <div className="absolute inset-0 bg-gradient-to-r from-violet-400 to-blue-400 rounded-2xl opacity-20 group-hover:opacity-30 transition shadow-[0_0_40px_rgba(124,58,237,0.3)]"></div>
             <div className="relative bg-white/90 backdrop-blur-xl rounded-2xl shadow-xl shadow-violet-100 border border-violet-100/50 p-2 flex items-center gap-3">
               <Search className="w-5 h-5 text-violet-400 ml-4" />
               <input 
@@ -516,7 +624,7 @@ export function LandingPage({ onNavigate, onLoginClick, onRegisterClick, isAuthe
             {filteredShops.map((shop, idx) => (
               <motion.div 
                 key={shop.id}
-                className="group relative bg-white/80 backdrop-blur-lg rounded-3xl overflow-hidden border border-violet-100/50 shadow-lg shadow-violet-100/50 hover:shadow-xl hover:shadow-violet-200/50 transition-all duration-300"
+                className="group relative bg-white/80 backdrop-blur-md rounded-3xl overflow-hidden border border-violet-100/50 shadow-lg shadow-violet-100/50 hover:shadow-xl hover:shadow-violet-200/50 transition-all duration-300 will-change-transform"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: idx * 0.1 }}
@@ -532,6 +640,7 @@ export function LandingPage({ onNavigate, onLoginClick, onRegisterClick, isAuthe
                   <motion.img 
                     src={shop.image} 
                     alt={shop.name}
+                    loading="lazy"
                     className="w-full h-full object-cover"
                     whileHover={{ scale: 1.15 }}
                     transition={{ duration: 0.6 }}
